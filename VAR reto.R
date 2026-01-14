@@ -5,6 +5,17 @@ library(readxl)
 library(zoo)
 library(lmtest)
 library(sandwich)
+library(ggplot2)
+library(tidyr)
+
+# Configurar httpgd para visualización en VS Code
+if (requireNamespace("httpgd", quietly = TRUE)) {
+  options(vsc.plot = FALSE)
+  options(device = function(...) {
+    httpgd::hgd(width = 10, height = 7.5, silent = TRUE)
+    .Call("hgd_plot_activate", PACKAGE = "httpgd")
+  })
+}
 
 # =========================
 # 1) Leer tu archivo
@@ -22,24 +33,12 @@ inf<- ts(data=datos$inf,start=c(2006,1), frequency=4)
 outgap<-ts(data=datos$`Output gap`,start=c(2006,1), frequency=4)
 tiie<-ts(data=datos$tasa,start=c(2006,1), frequency=4)
 
-df <- aggregate(
-  cbind(inf, outgap, tiie) ~ time,
-  data = df,
-  FUN = mean,
-  na.rm = TRUE
-)
-
-# Verificación rápida (debería ser TRUE)
-if (!isTRUE(is.unique(df$time))) {
-  stop("Aún hay trimestres duplicados en df$time. Revisa tu columna Trim.")
-}
-
 # =========================
 # 4) Crear series zoo
 # =========================
-pi  <- zoo(df$inf,          df$time)  # inflación
-r   <- zoo(df$tasa,         df$time)  # tasa
-gap <- zoo(df$`Output gap`, df$time)  # output gap
+pi  <- zoo(as.numeric(inf),     time(inf))    # inflación
+r   <- zoo(as.numeric(tiie),    time(tiie))   # tasa
+gap <- zoo(as.numeric(outgap),  time(outgap)) # output gap
 
 # =========================
 # 5) Rezagos
@@ -144,4 +143,48 @@ for (h in 1:H) {
 }
 
 path
+
+# Exporta el pronóstico a CSV
+write.csv(
+  path,
+  "C:/Users/brand/OneDrive/Desktop/ITAM/Banxico Reto/Predicciones/VAR/path_forecast.csv",
+  row.names = FALSE
+)
+
+# Gráfica estilizada (ggplot2) y exportada a PNG
+path_long <- pivot_longer(path, c(pi, gap, r), names_to = "serie", values_to = "valor")
+
+p <- ggplot(path_long, aes(x = h, y = valor, color = serie)) +
+  geom_hline(yintercept = 3, linetype = "dashed", color = "gray50", size = 0.7) +
+  geom_line(size = 1.1) +
+  scale_color_manual(
+    values = c(pi = "firebrick", gap = "steelblue", r = "darkgreen"),
+    labels = c(pi = "Inflación (pi)", gap = "Output gap", r = "Tasa (r)")
+  ) +
+  labs(
+    title = "Trayectorias simuladas",
+    subtitle = "Incluye meta de inflación 3%",
+    x = "Horizonte (trimestres)",
+    y = "Nivel / %",
+    color = "Serie"
+  ) +
+  annotate("text", x = max(path$h) * 0.98, y = 3, label = "Meta 3%", hjust = 1, vjust = -0.5, color = "gray30", size = 3.5) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    panel.grid.major = element_line(color = "gray85"),
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(face = "bold")
+  )
+
+ggsave(
+  filename = "C:/Users/brand/OneDrive/Desktop/ITAM/Banxico Reto/Predicciones/VAR/path_forecast.png",
+  plot = p,
+  width = 12,
+  height = 9,
+  dpi = 200
+)
+
+print(p)
 
